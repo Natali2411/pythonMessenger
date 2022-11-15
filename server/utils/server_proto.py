@@ -54,3 +54,47 @@ class ChatServerProtocol(Protocol, ConvertMixin, DbInterfaceMixin):
                 return True
         else:
             return False
+
+    def data_received(self, data):
+        _data = self._bytes_to_dict(data)
+        if _data:
+            try:
+
+                if _data['action'] == 'presence':  # received presence msg
+                    if _data['user']['account_name']:
+
+                        resp_msg = self.jim.response(code=200)
+                        self.transport.write(self._dict_to_bytes(resp_msg))
+                    else:
+                        resp_msg = self.jim.response(code=500,
+                                                     error='wrong presence msg')
+                        self.transport.write(self._dict_to_bytes(resp_msg))
+
+                elif _data['action'] == 'authenticate':
+                    # todo complete this
+                    if self.authenticate(_data['user']['account_name'],
+                                         _data['user']['password']):
+
+                        # add new user to temp variables
+                        if _data['user']['account_name'] not in self.users:
+                            self.user = _data['user']['account_name']
+
+                            self.connections[self.transport][
+                                'username'] = self.user
+
+                            self.users[_data['user']['account_name']] = \
+                                self.connections[self.transport]
+
+                            self.set_user_online(_data['user']['account_name'])
+
+                        resp_msg = self.jim.probe(self.user)
+                        self.users[_data['user']['account_name']][
+                            'transport'].write(self._dict_to_bytes(resp_msg))
+            except Exception as e:
+                resp_msg = self.jim.response(code=500, error=e)
+                self.transport.write(self._dict_to_bytes(resp_msg))
+        else:
+            resp_msg = self.jim.response(
+                code=402, error='You sent message without name or data'
+            )
+            self.transport.write(self._dict_to_bytes(resp_msg))
